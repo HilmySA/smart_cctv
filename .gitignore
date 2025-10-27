@@ -1,0 +1,16 @@
+# File: .gitignore
+
+# Abaikan SEMUA virtual environment Python
+.venv/
+venv/
+*.venv
+
+# Abaikan file cache Python
+__pycache__/
+*.pyc
+
+# Abaikan dependensi Node.js
+node_modules/
+
+# Abaikan file environment lokal
+.env
