@@ -24,15 +24,18 @@
     pkgs.libGL
     pkgs.libglvnd
     pkgs.ffmpeg
+    pkgs.glib
+
+    pkgs.unixtools.ping
   ];
 
   # 3. Environment Variables (diambil dari shellHook Anda)
   env = {
     # Path untuk C++ dan libGL saat runtime
     # Saya sudah perbaiki path ${pkgs.stdenv.cc.cc.lib} yang error
-    LD_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}:${pkgs.libglvnd}/lib:${pkgs.libGL}/lib:$LD_LIBRARY_PATH";
+    LD_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}:${pkgs.libglvnd}/lib:${pkgs.libGL}/lib:${pkgs.glib}/lib:$LD_LIBRARY_PATH";
     # Menambahkan LIBRARY_PATH untuk linker saat build
-    LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}:${pkgs.libglvnd}/lib:${pkgs.libGL}/lib:$LIBRARY_PATH";
+    LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}:${pkgs.libglvnd}/lib:${pkgs.libGL}/lib:${pkgs.glib}/lib:$LIBRARY_PATH";
   };
 
   idx = {
