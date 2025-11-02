@@ -15,6 +15,7 @@ class FaceRecognizer:
             if filename.lower().endswith((".jpg", ".jpeg", ".png")):
                 path = os.path.join(folder_path, filename)
                 label = os.path.splitext(filename)[0]
+                
                 image = Image.open(path).convert("RGB")
                 image_np = np.array(image)
 

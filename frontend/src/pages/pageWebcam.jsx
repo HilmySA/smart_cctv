@@ -28,7 +28,7 @@ const App = () => {
     console.log("📸 Screenshot berhasil diambil.");
 
     try {
-      const url = "https://8000-firebase-smartcctv-1761534075791.cluster-sumfw3zmzzhzkx4mpvz3ogth4y.cloudworkstations.dev/analyze";
+      const url = "http://localhost:8000/analyze";
       console.log("🌐 Mengirim POST request ke:", url);
 
       const res = await axios.post(url, {

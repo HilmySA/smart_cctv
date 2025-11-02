@@ -1,0 +1,29 @@
+name: condaenv
+channels:
+  - conda-forge
+
+dependencies:
+  # Python 3.10 untuk cocok dengan dlib .whl
+  - python=3.10
+
+  # Paket ML / CV via conda
+  - numpy
+  - pillow
+  - pytesseract
+  - easyocr
+  - opencv
+
+  # Paket Web & Lainnya
+  - fastapi
+  - uvicorn
+  - pydantic
+  - anyio
+  - starlette
+  - paho-mqtt
+  - requests
+
+  # # Paket pip dari PyPI
+  # - pip:
+  #     - face-recognition==1.3.0 --no-deps
+  #     - face_recognition_models==0.3.0
+  #     - mediapipe==0.10.21
