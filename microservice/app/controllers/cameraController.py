@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from app.services.faceRecognition import recognizer
 from app.services.motionDetection import detect_movement_by_hip
-from app.services.mqttHelper import MQTTHelper
+from app.services.try_mqttHelper import MQTTHelper
 from app.utils.image_payload import ImagePayload
 from app.utils.image_utils import decode_image
 
