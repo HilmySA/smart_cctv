@@ -126,7 +126,7 @@ class StreamController:
                 logger.info("MQTT reconnect berhasil.")
 
             self.mqtt.publish(
-                "perintah/aktuator/solenoid",
+                "aktuator/solenoid",
                 '{"status": true}',
                 qos=1
             )
