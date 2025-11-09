@@ -1,59 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // Import useEffect dan useRef
 // Import icons
 import {
   CameraVideo, Bell, PersonPlus, ClockHistory, Person, Briefcase,
   ShieldCheck, CarFront, Save, Broadcast, ExclamationTriangle,
-  PersonCheck, People, Trash // Menambahkan icon People dan Trash
+  PersonCheck, People, Trash
 } from 'react-bootstrap-icons';
 
 /**
  * =============================================
- * KOMPONEN UTAMA: DASHBOARD
+ * KOMPONEN UTAMA: DASHBOARD (UPDATED)
  * =============================================
  */
 export default function Dashboard() {
   
-  // State notifikasi (tetap di sini)
   const [notifications, setNotifications] = useState([
-    { id: 1, text: 'Motion detected at Lobby', type: 'motion' },
-    { id: 2, text: 'Camera 02 offline', type: 'alert' },
+    { id: 1, text: 'System Initialized. Waiting for connection...', type: 'alert' },
   ]);
 
-  // (STATE BARU) State daftar karyawan diangkat ke Dashboard
   const [employees, setEmployees] = useState([
-    // Data contoh awal
     { id: 1, nama: 'Alice Putri', posisi: 'Manager', akses: 'Manager', plat: 'B 1 A' },
     { id: 2, nama: 'Budi Santoso', posisi: 'Software Engineer', akses: 'Staff', plat: 'D 456 B' },
   ]);
 
-  // Fungsi untuk menambah karyawan (dikirim ke EmployeeForm)
+  // (Fungsi-fungsi ini tetap sama)
   const handleAddEmployee = (employeeData) => {
-    const newEmployee = {
-      id: employees.length + 1, // (Catatan: di aplikasi nyata, gunakan ID unik)
-      ...employeeData
-    };
+    const newEmployee = { id: employees.length + 1, ...employeeData };
     setEmployees([...employees, newEmployee]);
-
-    // Menambah notifikasi baru
-    setNotifications([
-      ...notifications,
-      { id: notifications.length + 1, text: `New employee "${employeeData.nama}" added`, type: 'user' }
+    setNotifications(prev => [
+      ...prev,
+      { id: Date.now(), text: `New employee "${employeeData.nama}" added`, type: 'user' }
     ]);
   };
 
-  // Fungsi untuk menghapus karyawan (dikirim ke EmployeeList)
   const handleDeleteEmployee = (id) => {
     const employeeToDelete = employees.find(emp => emp.id === id);
     if (window.confirm(`Yakin ingin menghapus karyawan "${employeeToDelete.nama}"?`)) {
       setEmployees(employees.filter(emp => emp.id !== id));
-      // Opsi: Tambah notifikasi penghapusan
-      setNotifications([
-        ...notifications,
-        { id: notifications.length + 1, text: `Employee "${employeeToDelete.nama}" removed`, type: 'alert' }
+      setNotifications(prev => [
+        ...prev,
+        { id: Date.now(), text: `Employee "${employeeToDelete.nama}" removed`, type: 'alert' }
       ]);
     }
   };
-
 
   return (
     <div className="container-fluid p-4" style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
@@ -63,23 +51,25 @@ export default function Dashboard() {
         <div className="col-lg-9">
           <div className="row g-4">
             
-            {/* 1. Komponen Streaming CCTV */}
+            {/* 1. Komponen Streaming CCTV (UPDATED) */}
             <div className="col-12">
-              <CCTVStream />
+              {/* * KITA MELEMPARKAN 'setNotifications' SEBAGAI PROP
+                * agar komponen CCTVStream bisa menambah notifikasi baru
+              */}
+              <CCTVStream setNotifications={setNotifications} />
             </div>
 
-            {/* (KOMPONEN BARU) 2. Daftar Karyawan */}
+            {/* 2. Daftar Karyawan (Tanpa Perubahan) */}
             <div className="col-12">
               <EmployeeList employees={employees} onDeleteEmployee={handleDeleteEmployee} />
             </div>
             
-            {/* 3. Komponen Form Data Karyawan */}
+            {/* 3. Form Data Karyawan (Tanpa Perubahan) */}
             <div className="col-md-6">
-              {/* Mengirim fungsi handleAddEmployee sebagai prop 'onAddEmployee' */}
               <EmployeeForm onAddEmployee={handleAddEmployee} />
             </div>
             
-            {/* 4. Komponen Form Jam Masuk Kantor */}
+            {/* 4. Form Jam Masuk Kantor (Tanpa Perubahan) */}
             <div className="col-md-6">
               <ScheduleForm />
             </div>
@@ -88,7 +78,7 @@ export default function Dashboard() {
 
         {/* Kolom Sidebar (Kanan) */}
         <div className="col-lg-3">
-          {/* 5. Komponen Kolom Notifikasi */}
+          {/* 5. Kolom Notifikasi (Tanpa Perubahan) */}
           <NotificationPanel notifications={notifications} />
         </div>
         
@@ -99,10 +89,116 @@ export default function Dashboard() {
 
 /**
  * =============================================
- * 1. KOMPONEN STREAM CCTV
+ * 1. KOMPONEN STREAM CCTV (UPDATED DENGAN LOGIKA WEBSOCKET)
  * =============================================
  */
-function CCTVStream() {
+function CCTVStream({ setNotifications }) {
+  const [motionStatus, setMotionStatus] = useState('-');
+  
+  // Refs untuk elemen DOM (cara React untuk document.getElementById)
+  const imgRef = useRef(null);
+  const canvasRef = useRef(null);
+  
+  // Refs untuk menyimpan status sebelumnya (mencegah spam notifikasi)
+  const lastMotionStatus = useRef('-');
+  const lastFaceCount = useRef(0);
+
+  // useEffect untuk setup WebSocket dan event listeners
+  useEffect(() => {
+    const img = imgRef.current;
+    const canvas = canvasRef.current;
+    if (!img || !canvas) return;
+
+    const ctx = canvas.getContext('2d');
+
+    // Fungsi untuk sinkronisasi ukuran canvas dengan gambar
+    function resizeCanvas() {
+      canvas.width = img.clientWidth;
+      canvas.height = img.clientHeight;
+    }
+
+    // Event listeners untuk resize
+    window.addEventListener('resize', resizeCanvas);
+    img.onload = resizeCanvas;
+    resizeCanvas(); // Panggil sekali saat inisialisasi
+
+    // 🔥 Setup WebSocket
+    const ws = new WebSocket(`ws://localhost:8000/ws/detection`);
+
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+      setNotifications(prev => [
+        ...prev,
+        { id: Date.now(), text: 'CCTV stream connected', type: 'user' }
+      ]);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      setNotifications(prev => [
+        ...prev,
+        { id: Date.now(), text: 'CCTV stream disconnected', type: 'alert' }
+      ]);
+    };
+
+    // 🔥 Menerima pesan dari WebSocket
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      resizeCanvas(); // Pastikan ukuran canvas selalu pas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 1. Logika deteksi Wajah
+      if (data.faces && Array.isArray(data.faces)) {
+        const scaleX = canvas.width / (data.frame_width || 640);
+        const scaleY = canvas.height / (data.frame_height || 480);
+        
+        // Notifikasi jika ada wajah baru terdeteksi
+        if (data.faces.length > 0 && lastFaceCount.current === 0) {
+          const label = data.faces[0].label;
+          const text = label !== 'Unknown' ? `Face detected: ${label}` : 'Unknown face detected';
+          setNotifications(prev => [...prev, { id: Date.now(), text: text, type: 'user' }]);
+        }
+        lastFaceCount.current = data.faces.length; // Update jumlah wajah
+
+        // Gambar kotak di canvas
+        data.faces.forEach(face => {
+          const { top, left, bottom, right, label } = face;
+          const x = left * scaleX;
+          const y = top * scaleY;
+          const w = (right - left) * scaleX;
+          const h = (bottom - top) * scaleY;
+
+          ctx.strokeStyle = 'lime';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x, y, w, h);
+          ctx.fillStyle = 'lime';
+          ctx.font = '16px Arial';
+          ctx.fillText(label, x + 5, y - 5);
+        });
+      } else {
+        lastFaceCount.current = 0; // Reset jika tidak ada wajah
+      }
+
+      // 2. Logika deteksi Gerakan
+      const currentMotion = data.motion || '-';
+      setMotionStatus(currentMotion); // Update status di footer
+
+      // Notifikasi jika status gerakan berubah
+      if (currentMotion !== '-' && lastMotionStatus.current === '-') {
+        setNotifications(prev => [...prev, { id: Date.now() + 1, text: `Motion detected: ${currentMotion}`, type: 'motion' }]);
+      }
+      lastMotionStatus.current = currentMotion; // Update status gerakan
+    };
+
+    // 🔥 Fungsi Cleanup: Berjalan saat komponen unmount
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      img.onload = null;
+      ws.close();
+    };
+
+  }, [setNotifications]); // Dependency array
+
   return (
     <div className="card shadow-sm h-100">
       <div className="card-header d-flex justify-content-between align-items-center">
@@ -114,23 +210,40 @@ function CCTVStream() {
           <Broadcast className="me-1" /> LIVE
         </span>
       </div>
-      <div className="card-body">
-        <div 
-          className="d-flex justify-content-center align-items-center bg-dark text-white rounded" 
-          style={{ height: '300px' }} // Tinggi dikurangi sedikit
-        >
-          <span>[Video stream akan tampil di sini]</span>
-        </div>
+      
+      {/* Container untuk stream dan overlay canvas */}
+      <div className="card-body p-0 position-relative">
+        {/* Gambar stream MJPEG */}
+        <img
+          ref={imgRef}
+          id="stream"
+          src="http://localhost:8000/mjpeg" // Sumber gambar dari backend Anda
+          className="img-fluid rounded-top"
+          alt="CCTV Stream"
+          style={{ width: '100%' }}
+        />
+        {/* Canvas untuk overlay deteksi */}
+        <canvas
+          ref={canvasRef}
+          id="overlay"
+          className="position-absolute top-0 start-0"
+          style={{ pointerEvents: 'none' }} // Agar bisa klik menembus canvas
+        />
+      </div>
+      
+      <div className="card-footer text-muted">
+        {/* Menampilkan status gerakan yang di-update oleh WebSocket */}
+        <strong>Motion Status:</strong> {motionStatus}
       </div>
     </div>
   );
 }
 
+
 /**
  * =============================================
- * (BARU) 2. KOMPONEN DAFTAR KARYAWAN
+ * 2. KOMPONEN DAFTAR KARYAWAN (Tanpa Perubahan)
  * =============================================
- * Menampilkan daftar karyawan dalam bentuk tabel.
  */
 function EmployeeList({ employees, onDeleteEmployee }) {
   return (
@@ -186,10 +299,9 @@ function EmployeeList({ employees, onDeleteEmployee }) {
 
 /**
  * =============================================
- * 3. KOMPONEN FORM KARYAWAN (UPDATE: Menerima Props)
+ * 3. KOMPONEN FORM KARYAWAN (Tanpa Perubahan)
  * =============================================
  */
-// Menerima prop 'onAddEmployee' dari Dashboard
 function EmployeeForm({ onAddEmployee }) { 
   const [nama, setNama] = useState('');
   const [posisi, setPosisi] = useState('');
@@ -198,15 +310,12 @@ function EmployeeForm({ onAddEmployee }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Kirim data ke fungsi 'onAddEmployee' di komponen induk
     onAddEmployee({ 
       nama: nama, 
       posisi: posisi, 
       akses: tingkatAkses, 
       plat: platNomor 
     });
-    
-    // Reset form
     setNama('');
     setPosisi('');
     setTingkatAkses('Staff');
@@ -223,7 +332,6 @@ function EmployeeForm({ onAddEmployee }) {
       </div>
       <div className="card-body">
         <form onSubmit={handleSubmit}>
-          
           <label htmlFor="nama" className="form-label">Nama Lengkap</label>
           <div className="input-group mb-3">
             <span className="input-group-text"><Person /></span>
@@ -237,7 +345,6 @@ function EmployeeForm({ onAddEmployee }) {
               required
             />
           </div>
-          
           <label htmlFor="posisi" className="form-label">Posisi</label>
           <div className="input-group mb-3">
             <span className="input-group-text"><Briefcase /></span>
@@ -251,7 +358,6 @@ function EmployeeForm({ onAddEmployee }) {
               required
             />
           </div>
-
           <label htmlFor="tingkatAkses" className="form-label">Tingkatan Akses</label>
           <div className="input-group mb-3">
             <span className="input-group-text"><ShieldCheck /></span>
@@ -267,7 +373,6 @@ function EmployeeForm({ onAddEmployee }) {
               <option value="Admin">Admin</option>
             </select>
           </div>
-
           <label htmlFor="platNomor" className="form-label">Plat Nomor (Opsional)</label>
           <div className="input-group mb-3">
             <span className="input-group-text"><CarFront /></span>
@@ -280,7 +385,6 @@ function EmployeeForm({ onAddEmployee }) {
               placeholder="Contoh: B 1234 XYZ"
             />
           </div>
-          
           <button type="submit" className="btn btn-primary w-100 mt-2 d-flex align-items-center justify-content-center">
             <Save className="me-2" />
             Simpan Karyawan
@@ -293,7 +397,7 @@ function EmployeeForm({ onAddEmployee }) {
 
 /**
  * =============================================
- * 4. KOMPONEN FORM JAM MASUK
+ * 4. KOMPONEN FORM JAM MASUK (Tanpa Perubahan)
  * =============================================
  */
 function ScheduleForm() {
@@ -374,7 +478,7 @@ function ScheduleForm() {
 
 /**
  * =============================================
- * 5. KOMPONEN PANEL NOTIFIKASI
+ * 5. KOMPONEN PANEL NOTIFIKASI (Tanpa Perubahan)
  * =============================================
  */
 function NotificationPanel({ notifications }) {
@@ -403,7 +507,7 @@ function NotificationPanel({ notifications }) {
       <div className="card-body p-0">
         <ul className="list-group list-group-flush" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
           {notifications.length > 0 ? (
-            [...notifications].reverse().map(notif => ( // Membalik urutan agar notif terbaru di atas
+            [...notifications].reverse().map(notif => (
               <li key={notif.id} className="list-group-item list-group-item-action d-flex align-items-center">
                 {getNotificationIcon(notif.type)}
                 <span>{notif.text}</span>
