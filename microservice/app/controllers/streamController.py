@@ -13,6 +13,7 @@ from app.services.rtspReader import RTSPReader
 from app.views.templates import index_html
 from app.services.faceRecognition import recognizer
 from app.services.mqttHelper import MQTTHelper
+from app.services.anpr import anpr_recognizer
 
 logger = logging.getLogger(__name__)
 
@@ -22,44 +23,65 @@ class StreamController:
         self.reader = RTSPReader(self.RTSP_URL)
 
         self.last_face_data = []
+        self.last_anpr_data = []
         self.last_motion = "-"
         self.last_update = None
         self.frame_width = 640
         self.frame_height = 480
         self.active_websockets = set()
+        
+        self.loop = None # ✏️ Akan diisi oleh startup event
+        self.mqtt_connected = False # ✏️ Penanda status
+        self.analysis_counter = 0 # ✅ SOLUSI FREEZE ANDA SUDAH BENAR
 
-        # ✅ MQTT hanya dibuat sekali
+        # ✏️ DIUBAH: HANYA buat instance, JANGAN connect
         try:
             self.mqtt = MQTTHelper(client_id_prefix="ml-backend")
-            self.mqtt.connect()
-            logger.info("MQTT terhubung pada inisialisasi StreamController.")
+            logger.info("Instance MQTTHelper dibuat (belum konek).")
         except Exception as e:
-            logger.error(f"Gagal koneksi awal ke MQTT: {e}")
+            logger.error(f"Gagal membuat instance MQTT: {e}")
             self.mqtt = None
 
         # Jalankan analisis di thread terpisah
         threading.Thread(target=self.background_analysis, daemon=True).start()
 
-    # View utama
+    # ➕ BARU: Method Async untuk Startup Event
+    async def connect_mqtt(self):
+        if self.mqtt:
+            try:
+                await self.mqtt.connect() # ❗️ Pakai 'await'
+                self.mqtt_connected = True
+                logger.info("MQTT terhubung (via startup event).")
+            except Exception as e:
+                self.mqtt_connected = False
+                logger.error(f"Gagal koneksi awal ke MQTT (startup): {e}")
+
+    # ➕ BARU: Method Async untuk Shutdown Event
+    async def disconnect_mqtt(self):
+        if self.mqtt and self.mqtt_connected:
+            try:
+                await self.mqtt.disconnect() # ❗️ Pakai 'await'
+                self.mqtt_connected = False
+                logger.info("MQTT terputus (via shutdown event).")
+            except Exception as e:
+                logger.error(f"Gagal saat disconnect MQTT: {e}")
+
+    # ... (get_index dan stream_mjpeg tetap sama) ...
     def get_index(self):
         return HTMLResponse(index_html)
-
-    # Stream video MJPEG
     def stream_mjpeg(self):
         def generate():
             while True:
                 ret, frame = self.reader.read()
-                if not ret:
-                    continue
-
+                if not ret: continue
                 self.frame_height, self.frame_width = frame.shape[:2]
                 _, buffer = cv2.imencode(".jpg", frame)
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
-
         return StreamingResponse(generate(), media_type="multipart/x-mixed-replace; boundary=frame")
 
-    # Analisis wajah di background
+
+    # ✅ Analisis wajah di background (LOGIKA ANDA SUDAH BENAR)
     def background_analysis(self):
         while True:
             ret, frame = self.reader.read()
@@ -69,27 +91,54 @@ class StreamController:
 
             try:
                 self.frame_height, self.frame_width = frame.shape[:2]
-                face_results = recognizer.verify_face(frame)
-
-                if isinstance(face_results, list):
-                    self.last_face_data = face_results
-                    label_names = [f["label"] for f in face_results]
-                    self.send_to_mqtt({"face": ", ".join(label_names)})
+                self.analysis_counter += 1
+                
+                mqtt_payload = {} 
+                
+                # ✏️ DIUBAH: Jalankan ANPR hanya 1 dari 10 frame (misal, di frame ke-10)
+                if self.analysis_counter % 10 == 0:
+                    anpr_results = anpr_recognizer.recognize_plate(frame)
+                    if isinstance(anpr_results, list):
+                        self.last_anpr_data = anpr_results
+                        plate_labels = [p["label"] for p in anpr_results]
+                        if plate_labels:
+                            mqtt_payload["plate"] = ", ".join(plate_labels)
+                    else:
+                        self.last_anpr_data = [] 
+                
+                # ✏️ DIUBAH: Jalankan FR di 9 frame lainnya (prioritas utama)
                 else:
-                    self.last_face_data = []
+                    face_results = recognizer.verify_face(frame)
+                    if isinstance(face_results, list):
+                        self.last_face_data = face_results
+                        label_names = [f["label"] for f in face_results]
+                        if label_names:
+                             mqtt_payload["face"] = ", ".join(label_names)
+                    else:
+                        self.last_face_data = [] 
+                
+                # Reset counter agar tidak terlalu besar (opsional tapi bagus)
+                if self.analysis_counter > 1000:
+                    self.analysis_counter = 0
+
+                if mqtt_payload:
+                    self.send_to_mqtt(mqtt_payload)
 
                 self.last_update = datetime.now(timezone.utc)
-                self.push_ws_update()
+                self.push_ws_update() 
 
             except Exception as e:
                 logger.error(f"Error analisis frame: {e}")
 
-            time.sleep(0.5)
+            time.sleep(0.1)
 
-    # Kirim data ke semua client WebSocket aktif
+    # ✏️ DIUBAH: push_ws_update (Gunakan self.loop)
     def push_ws_update(self):
+        if not self.loop: return # Cek jika loop belum siap
+            
         data = {
             "faces": self.last_face_data,
+            "plates": self.last_anpr_data,
             "motion": self.last_motion,
             "timestamp": self.last_update.isoformat() if self.last_update else None,
             "frame_width": self.frame_width,
@@ -99,54 +148,63 @@ class StreamController:
         dead_clients = []
         for ws in self.active_websockets:
             try:
-                asyncio.run_coroutine_threadsafe(ws.send_text(message), ws.loop)
+                # ❗️ Gunakan self.loop yang disimpan
+                asyncio.run_coroutine_threadsafe(ws.send_text(message), self.loop)
             except Exception:
                 dead_clients.append(ws)
         for ws in dead_clients:
             self.active_websockets.remove(ws)
 
-    # WebSocket endpoint
+    # ✏️ DIUBAH: ws_detections (Tidak perlu set loop lagi)
     async def ws_detections(self, websocket: WebSocket):
         await websocket.accept()
-        websocket.loop = asyncio.get_event_loop()
+        # ❌ HAPUS: websocket.loop = asyncio.get_event_loop()
         self.active_websockets.add(websocket)
         try:
             while True:
-                await websocket.receive_text()  # dummy read agar koneksi tetap hidup
+                await websocket.receive_text() 
         except Exception:
             self.active_websockets.remove(websocket)
 
-    # ✅ MQTT sender (gunakan koneksi yang sama)
-    def send_to_mqtt(self, result):
+    # ❗️❗️ INI ADALAH FUNGSI YANG DIPERBAIKI (FINAL v2)
+    def send_to_mqtt(self, payload):
+        """
+        Dipanggil dari thread 'background_analysis'.
+        Kita menggunakan 'lambda' di dalam 'call_soon_threadsafe'
+        untuk memanggil 'publish' dengan keyword argument (qos).
+        """
+        
+        # Cek jika loop, mqtt, atau koneksi belum siap
+        if not self.loop or not self.mqtt or not self.mqtt_connected:
+            logger.warning("MQTT koneksi belum siap. Publish dilewati.")
+            return
+        
         try:
-            # Jika MQTT belum terhubung atau putus, coba reconnect
-            if self.mqtt is None:
-                self.mqtt = MQTTHelper(client_id_prefix="ml-backend")
-                self.mqtt.connect()
-                logger.info("MQTT reconnect berhasil.")
+            # Siapkan log data
+            log_data = {
+                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            }
+            if "face" in payload: log_data["face"] = payload["face"]
+            if "plate" in payload: log_data["plate"] = payload["plate"]
 
-            self.mqtt.publish(
-                "aktuator/solenoid",
-                '{"status": true}',
-                qos=1
+            # 1. Panggil publish untuk aktuator (dibungkus lambda)
+            self.loop.call_soon_threadsafe(
+                lambda: self.mqtt.publish(
+                    "aktuator/solenoid",
+                    '{"status": true}',
+                    qos=1
+                )
             )
-            self.mqtt.publish(
-                "log/deteksi/kamera1",
-                json.dumps({
-                    "face": result.get("face", ""),
-                    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-                }),
-                qos=0,
+            
+            # 2. Panggil publish untuk log (dibungkus lambda)
+            self.loop.call_soon_threadsafe(
+                lambda: self.mqtt.publish(
+                    "log/deteksi/kamera1",
+                    json.dumps(log_data),
+                    qos=0
+                )
             )
-
+            
         except Exception as e:
-            logger.error(f"Gagal kirim data MQTT: {e}")
-            # Jika error, tandai agar reconnect di panggilan berikutnya
-            self.mqtt = None
-
-    def __del__(self):
-        try:
-            if self.mqtt:
-                self.mqtt.disconnect()
-        except Exception:
-            pass
+            # Tangkap jika ada error saat mendelegasikan panggilan
+            logger.error(f"Gagal mendelegasikan panggilan MQTT (lambda): {e}")

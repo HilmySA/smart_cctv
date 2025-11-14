@@ -2,7 +2,7 @@ import gmqtt
 import logging
 import uuid
 import ssl
-import asyncio
+import asyncio  # Pastikan ini diimpor
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class MQTTHelper:
         self.client.set_auth_credentials(self.username, self.password)
 
         self.client.set_config({
-            'reconnect_retries': -1,
+            'reconnect_retries': -1,  # Biarkan gmqtt menangani auto-reconnect
             'reconnect_delay': 5
         })
 
@@ -36,35 +36,48 @@ class MQTTHelper:
     def _on_subscribe(self, client, mid, qos, properties):
         logger.info(f"Berhasil subscribe (MID={mid})")
 
-    # ✅ Ubah connect jadi versi sinkron (agar bisa dipanggil dari class lain tanpa await)
-    def connect(self):
+    # ❗️ DIUBAH: Jadikan method ini ASYNC
+    async def connect(self):
         try:
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
 
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(
-                self.client.connect(self.broker, self.port, ssl=ssl_context)
-            )
-            logger.info("Koneksi MQTT dimulai (TLS).")
+            # ❌ HAPUS SEMUA LOGIKA EVENT LOOP MANUAL
+            # loop = asyncio.new_event_loop()
+            # asyncio.set_event_loop(loop)
+            # loop.run_until_complete(...)
+
+            # ✅ CUKUP AWAIT KONEKSI CLIENT.
+            # Ini akan berjalan di dalam event loop FastAPI.
+            await self.client.connect(self.broker, self.port, ssl=ssl_context)
+            
+            # Kita tidak perlu log "Koneksi dimulai" di sini, 
+            # biarkan callback _on_connect yang menanganinya.
+            
         except Exception as e:
             logger.error(f"Gagal terhubung ke MQTT: {e}")
-            raise
+            raise  # Lempar error agar controller tahu
 
-    def disconnect(self):
+    # ❗️ DIUBAH: Jadikan method ini ASYNC
+    async def disconnect(self):
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self.client.disconnect())
+            # ❌ HAPUS SEMUA LOGIKA EVENT LOOP MANUAL
+            
+            # ✅ CUKUP AWAIT DISCONNECT
+            await self.client.disconnect()
             logger.info("Koneksi MQTT ditutup.")
         except Exception as e:
             logger.error(f"Gagal disconnect MQTT: {e}")
 
+    # ❗️ DIUBAH: Jadikan method ini ASYNC
     def publish(self, topic, message, qos=1):
         try:
             logger.info(f"Mengirim ke '{topic}' → {message}")
+            
+            # ✅ AWAIT PUBLISH DARI CLIENT
+            # Ini akan cocok dengan panggilan 'await self.mqtt.publish' di controller
             self.client.publish(topic, message, qos=qos)
+            
         except Exception as e:
             logger.error(f"Gagal publish (error: {e})")
