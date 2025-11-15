@@ -1,4 +1,4 @@
-name: condaenv
+name: faceenv
 channels:
   - conda-forge
 
@@ -8,9 +8,6 @@ dependencies:
 
   # Paket ML / CV via conda
   - numpy
-  - pillow
-  - pytesseract
-  - easyocr
   - opencv
 
   # Paket Web & Lainnya

@@ -96,7 +96,7 @@ class StreamController:
                 mqtt_payload = {} 
                 
                 # ✏️ DIUBAH: Jalankan ANPR hanya 1 dari 10 frame (misal, di frame ke-10)
-                if self.analysis_counter % 10 == 0:
+                if self.analysis_counter % 3 == 0:
                     anpr_results = anpr_recognizer.recognize_plate(frame)
                     if isinstance(anpr_results, list):
                         self.last_anpr_data = anpr_results

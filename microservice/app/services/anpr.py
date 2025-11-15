@@ -1,69 +1,149 @@
-import easyocr
-import numpy as np
+# app/services/anpr.py
 import logging
+import cv2
+import re
+import base64
+import numpy as np
+from paddleocr import PaddleOCR
 
 logger = logging.getLogger(__name__)
 
+# ============================================================
+# Pattern plat Indonesia
+# ============================================================
+PLAT_REGEX = re.compile(r"^[A-Z]{1,2}[0-9]{1,4}[A-Z]{0,3}$")
+
+def is_valid_plate(text: str) -> bool:
+    return bool(PLAT_REGEX.match(text))
+
+def format_plate(text: str) -> str:
+    t = text.upper()
+    m = re.match(r"^([A-Z]{1,2})([0-9]{1,4})([A-Z]{0,3})$", t)
+    if not m:
+        return t
+    part1, nums, part3 = m.groups()
+    if part3:
+        return f"{part1} {nums} {part3}"
+    return f"{part1} {nums}"
+
+# ============================================================
+# Anti false positive
+# ============================================================
+CHAR_MAP = {
+    '0': 'O',
+    '1': 'I',
+    '5': 'S',
+    '8': 'B',
+    '6': 'G'
+}
+
+def clean_text(txt: str) -> str:
+    txt = ''.join(c for c in txt.upper() if c.isalnum())
+    return ''.join(CHAR_MAP.get(c, c) for c in txt)
+
+# ============================================================
+# Crop to base64
+# ============================================================
+def crop_to_b64(img):
+    if img is None or img.size == 0:
+        return ""
+    ok, buf = cv2.imencode(".jpg", img)
+    if not ok:
+        return ""
+    return "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode()
+
+# ============================================================
+# Warna plat
+# ============================================================
+def detect_color(crop):
+    try:
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        h_mean = hsv[:, :, 0].mean()
+        s_mean = hsv[:, :, 1].mean()
+        v_mean = hsv[:, :, 2].mean()
+
+        if s_mean > 40 and 10 < h_mean < 45:
+            return "yellow"
+        if v_mean < 70:
+            return "black"
+        return "white"
+    except:
+        return "unknown"
+
+
+# ============================================================
+# ANPR (PaddleOCR version)
+# ============================================================
 class ANPRRecognizer:
-    def __init__(self, lang_list=['en']):
-        """
-        Inisialisasi EasyOCR Reader.
-        Ini akan mengunduh model saat pertama kali dijalankan.
-        Ganti ['en'] dengan ['id'] jika Anda fokus pada plat Indonesia.
-        """
+    def __init__(self):
         try:
-            self.reader = easyocr.Reader(lang_list, gpu=True) # Coba gunakan GPU
-            logger.info("EasyOCR (ANPR) berhasil dimuat menggunakan GPU.")
-        except Exception:
-            logger.warning("Gagal memuat EasyOCR di GPU, mencoba CPU...")
-            self.reader = easyocr.Reader(lang_list, gpu=False) # Fallback ke CPU
-            logger.info("EasyOCR (ANPR) berhasil dimuat menggunakan CPU.")
-            
-        self.confidence_threshold = 0.4 # Ambil teks dengan confidence di atas 40%
+            self.ocr = PaddleOCR(
+                use_angle_cls=True,
+                lang='en',
+            )
+            logger.info("PaddleOCR ANPR loaded.")
+        except Exception as e:
+            logger.error(f"Gagal load PaddleOCR: {e}")
+            self.ocr = None
+
+        self.conf_threshold = 0.40
 
     def recognize_plate(self, frame):
-        """
-        Mendeteksi dan mengenali plat nomor dari satu frame.
-        Mengembalikan format yang mirip dengan FaceRecognizer.
-        """
+        if self.ocr is None:
+            return "Error: OCR not initialized"
+
         try:
-            # EasyOCR bekerja dengan channel warna BGR (default OpenCV)
-            results = self.reader.readtext(frame)
-            
+            results = self.ocr.ocr(frame, cls=True)
             formatted_results = []
 
-            for (bbox, text, prob) in results:
-                if prob < self.confidence_threshold:
-                    continue
+            if results is None:
+                return "No plate detected"
 
-                # Bersihkan teks plat nomor (huruf besar, tanpa spasi)
-                clean_text = text.upper().replace(' ', '')
-                
-                # bbox adalah list 4 titik [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-                # Kita ubah ke format (top, right, bottom, left)
-                # Dapatkan bounding box lurus, bukan 4 titik
-                (tl, tr, br, bl) = bbox
-                top = int(tl[1])
-                left = int(tl[0])
-                bottom = int(br[1])
-                right = int(br[0])
+            for line in results:
+                for box, (text, prob) in line:
 
-                label = f"{clean_text} ({prob:.2f})"
+                    # Probabilitas minimal
+                    if prob is None or prob < self.conf_threshold:
+                        continue
 
-                formatted_results.append({
-                    "label": label,
-                    "top": top,
-                    "left": left,
-                    "bottom": bottom,
-                    "right": right
-                })
+                    if not text or len(text.strip()) == 0:
+                        continue
+
+                    # Bersihkan teks
+                    clean_txt = clean_text(text)
+
+                    # Filter plat
+                    if not is_valid_plate(clean_txt):
+                        continue
+
+                    # Ambil bbox
+                    pts = np.array(box).astype(int)
+                    xs = pts[:, 0]
+                    ys = pts[:, 1]
+
+                    left, right = xs.min(), xs.max()
+                    top, bottom = ys.min(), ys.max()
+
+                    # Pastikan koordinat valid
+                    if top < 0 or left < 0 or bottom <= top or right <= left:
+                        continue
+
+                    formatted_results.append({
+                        "label": f"{clean_txt} ({prob:.2f})",
+                        "top": int(top),
+                        "left": int(left),
+                        "bottom": int(bottom),
+                        "right": int(right)
+                    })
 
             return formatted_results if formatted_results else "No plate detected"
 
         except Exception as e:
-            logger.error(f"Error saat ANPR: {e}")
-            return f"Error: {str(e)}"
+            logger.error(f"ANPR Fatal Error: {e}")
+            return "Error"
 
-# Inisialisasi saat modul diimpor (sama seperti recognizer)
-# Kita buat satu instance untuk digunakan di seluruh aplikasi
+
+# ============================================================
+# Instance global
+# ============================================================
 anpr_recognizer = ANPRRecognizer()
