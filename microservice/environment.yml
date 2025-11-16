@@ -24,3 +24,5 @@ dependencies:
   #     - face_recognition_models==0.3.0
   #     - mediapipe==0.10.21
   #     - gmqtt
+  #     - supabase-py
+  #     - python-dotenv

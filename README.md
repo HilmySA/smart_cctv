@@ -3,7 +3,7 @@
 1. Buat environment conda dengan mamba dan install
 
 - mamba env create -f environment.yml
-- mamba activate condaenv
+- mamba activate faceenv
 
 3. Install yang hanya ada di pip PiPy
 

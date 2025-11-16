@@ -13,10 +13,11 @@ class KaryawanModel extends Model
     protected $useSoftDeletes   = false;
     protected $protectFields    = true;
     protected $allowedFields    = [
-        'nama_lengkap',
+        'nama',
         'posisi',
-        'tingkatan_akses',
-        'plat_nomor'
+        'akses',
+        'plat',
+        'foto_url'
     ];
 
     // Dates

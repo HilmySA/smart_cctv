@@ -3,8 +3,10 @@ import logging
 import cv2
 import re
 import base64
+import traceback
 import numpy as np
-from paddleocr import PaddleOCR
+import easyocr
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,7 @@ def is_valid_plate(text: str) -> bool:
     return bool(PLAT_REGEX.match(text))
 
 def format_plate(text: str) -> str:
+    
     t = text.upper()
     m = re.match(r"^([A-Z]{1,2})([0-9]{1,4})([A-Z]{0,3})$", t)
     if not m:
@@ -72,74 +75,73 @@ def detect_color(crop):
 
 
 # ============================================================
-# ANPR (PaddleOCR version)
+# ANPR (EasyOCR version)
 # ============================================================
 class ANPRRecognizer:
     def __init__(self):
         try:
-            self.ocr = PaddleOCR(
-                use_angle_cls=True,
-                lang='en',
-            )
-            logger.info("PaddleOCR ANPR loaded.")
+            self.reader = easyocr.Reader(['en'], gpu=False)
+            logger.info("EasyOCR ANPR loaded.")
         except Exception as e:
-            logger.error(f"Gagal load PaddleOCR: {e}")
-            self.ocr = None
+            logger.error(f"Gagal load EasyOCR: {e}")
+            self.reader = None
 
         self.conf_threshold = 0.40
 
     def recognize_plate(self, frame):
-        if self.ocr is None:
+        if self.reader is None:
             return "Error: OCR not initialized"
 
         try:
-            results = self.ocr.ocr(frame, cls=True)
+            results = self.reader.readtext(frame)
             formatted_results = []
 
-            if results is None:
+            if not results:
                 return "No plate detected"
 
-            for line in results:
-                for box, (text, prob) in line:
+            for item in results:
+                if len(item) != 3:
+                    continue
 
-                    # Probabilitas minimal
-                    if prob is None or prob < self.conf_threshold:
-                        continue
+                bbox, text, prob = item
 
-                    if not text or len(text.strip()) == 0:
-                        continue
+                if prob is None or prob < self.conf_threshold:
+                    continue
 
-                    # Bersihkan teks
-                    clean_txt = clean_text(text)
+                if not text or len(text.strip()) == 0:
+                    continue
 
-                    # Filter plat
-                    if not is_valid_plate(clean_txt):
-                        continue
+                clean_txt = clean_text(text)
 
-                    # Ambil bbox
-                    pts = np.array(box).astype(int)
-                    xs = pts[:, 0]
-                    ys = pts[:, 1]
+                # Filter plat
+                if not is_valid_plate(clean_txt):
+                    continue
 
-                    left, right = xs.min(), xs.max()
-                    top, bottom = ys.min(), ys.max()
+                # Ambil bbox
+                pts = np.array(bbox).astype(int)
+                xs = pts[:, 0]
+                ys = pts[:, 1]
 
-                    # Pastikan koordinat valid
-                    if top < 0 or left < 0 or bottom <= top or right <= left:
-                        continue
+                left, right = xs.min(), xs.max()
+                top, bottom = ys.min(), ys.max()
 
-                    formatted_results.append({
-                        "label": f"{clean_txt} ({prob:.2f})",
-                        "top": int(top),
-                        "left": int(left),
-                        "bottom": int(bottom),
-                        "right": int(right)
-                    })
+                # Validasi area
+                if top < 0 or left < 0 or bottom <= top or right <= left:
+                    continue
+
+                formatted_results.append({
+                    "label": f"{clean_txt} ({prob:.2f})",
+                    "top": int(top),
+                    "left": int(left),
+                    "bottom": int(bottom),
+                    "right": int(right)
+                })
 
             return formatted_results if formatted_results else "No plate detected"
 
         except Exception as e:
             logger.error(f"ANPR Fatal Error: {e}")
+            logger.error(traceback.format_exc())
             return "Error"
 
 

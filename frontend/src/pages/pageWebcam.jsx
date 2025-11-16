@@ -1,87 +1,236 @@
-import React, { useState, useEffect, useRef } from 'react'; // Import useEffect dan useRef
+// Import React Hooks
+import React, { useState, useEffect, useRef } from "react";
+
 // Import icons
 import {
-  CameraVideo, Bell, PersonPlus, ClockHistory, Person, Briefcase,
-  ShieldCheck, CarFront, Save, Broadcast, ExclamationTriangle,
-  PersonCheck, People, Trash
-} from 'react-bootstrap-icons';
+  CameraVideo,
+  Bell,
+  PersonPlus,
+  ClockHistory,
+  Person,
+  Briefcase,
+  ShieldCheck,
+  CarFront,
+  Save,
+  Broadcast,
+  ExclamationTriangle,
+  PersonCheck,
+  People,
+  Trash,
+  CloudUpload,
+} from "react-bootstrap-icons";
+
+// <-- BARU: Import client Supabase
+import { supabase } from "../api/supabaseClient";
+
+// =============================================
+// KONFIGURASI API
+// =============================================
+const API_BASE_URL = "http://localhost:8080/api";
 
 /**
  * =============================================
- * KOMPONEN UTAMA: DASHBOARD (UPDATED)
+ * KOMPONEN UTAMA: DASHBOARD (UPDATED DENGAN API)
  * =============================================
  */
 export default function Dashboard() {
-  
-  const [notifications, setNotifications] = useState([
-    { id: 1, text: 'System Initialized. Waiting for connection...', type: 'alert' },
-  ]);
+  // <-- DIHAPUS: State notifikasi lokal sudah tidak diperlukan
+  // const [notifications, setNotifications] = useState([...]);
 
-  const [employees, setEmployees] = useState([
-    { id: 1, nama: 'Alice Putri', posisi: 'Manager', akses: 'Manager', plat: 'B 1 A' },
-    { id: 2, nama: 'Budi Santoso', posisi: 'Software Engineer', akses: 'Staff', plat: 'D 456 B' },
-  ]);
+  // State untuk data dari API
+  const [employees, setEmployees] = useState([]);
+  const [schedule, setSchedule] = useState(null);
 
-  // (Fungsi-fungsi ini tetap sama)
-  const handleAddEmployee = (employeeData) => {
-    const newEmployee = { id: employees.length + 1, ...employeeData };
-    setEmployees([...employees, newEmployee]);
-    setNotifications(prev => [
-      ...prev,
-      { id: Date.now(), text: `New employee "${employeeData.nama}" added`, type: 'user' }
-    ]);
-  };
+  // State untuk loading & error
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const handleDeleteEmployee = (id) => {
-    const employeeToDelete = employees.find(emp => emp.id === id);
-    if (window.confirm(`Yakin ingin menghapus karyawan "${employeeToDelete.nama}"?`)) {
-      setEmployees(employees.filter(emp => emp.id !== id));
-      setNotifications(prev => [
-        ...prev,
-        { id: Date.now(), text: `Employee "${employeeToDelete.nama}" removed`, type: 'alert' }
-      ]);
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const [employeeResponse, scheduleResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/karyawan`),
+          fetch(`${API_BASE_URL}/jam-kantor`),
+        ]);
+
+        if (!employeeResponse.ok || !scheduleResponse.ok) {
+          throw new Error("Failed to fetch data from API");
+        }
+
+        const employeeData = await employeeResponse.json();
+        const scheduleArray = await scheduleResponse.json();
+
+        const scheduleObject = scheduleArray.reduce((acc, item) => {
+          acc[item.hari] = {
+            masuk: item.jam_masuk.substring(0, 5),
+            keluar: item.jam_pulang.substring(0, 5),
+          };
+          return acc;
+        }, {});
+
+        setEmployees(employeeData);
+        setSchedule(scheduleObject);
+
+        // <-- DIHAPUS: setNotifications(...)
+      } catch (err) {
+        setError(err.message);
+        // <-- DIHAPUS: setNotifications(...)
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const handleAddEmployee = async (formData) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/karyawan`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to add employee.");
+      }
+
+      const newEmployee = await response.json();
+      setEmployees((prev) => [...prev, newEmployee]);
+
+      // <-- DIHAPUS: setNotifications(...)
+    } catch (err) {
+      setError(err.message);
+      // <-- DIHAPUS: setNotifications(...)
     }
   };
 
+  const handleDeleteEmployee = async (id) => {
+    const employeeToDelete = employees.find((emp) => emp.id === id);
+    if (!employeeToDelete) return;
+
+    if (
+      window.confirm(
+        `Yakin ingin menghapus karyawan "${employeeToDelete.nama}"?`
+      )
+    ) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/employees/${id}`, {
+          method: "DELETE",
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to delete employee.");
+        }
+
+        setEmployees(employees.filter((emp) => emp.id !== id));
+        // <-- DIHAPUS: setNotifications(...)
+      } catch (err) {
+        setError(err.message);
+        // <-- DIHAPUS: setNotifications(...)
+      }
+    }
+  };
+
+  const handleSaveSchedule = async (scheduleData) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/jam-kantor/update`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(scheduleData),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update schedule.");
+      }
+
+      const updatedSchedule = await response.json();
+      setSchedule(updatedSchedule);
+      // <-- DIHAPUS: setNotifications(...)
+    } catch (err) {
+      setError(err.message);
+      // <-- DIHAPUS: setNotifications(...)
+    }
+  };
+
+  // Tampilkan UI Loading atau Error
+  if (loading) {
+    return (
+      <div
+        className="d-flex justify-content-center align-items-center"
+        style={{ height: "100vh" }}
+      >
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Loading data from API...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="alert alert-danger m-4">
+        <h4>
+          <ExclamationTriangle /> API Error
+        </h4>
+        <p>
+          Gagal terhubung ke backend. Pastikan server API Anda berjalan di{" "}
+          <strong>{API_BASE_URL}</strong>.
+        </p>
+        <pre>{error}</pre>
+      </div>
+    );
+  }
+
+  // Tampilkan Dashboard jika data berhasil dimuat
   return (
-    <div className="container-fluid p-4" style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
+    <div
+      className="container-fluid p-4"
+      style={{ backgroundColor: "#f8f9fa", minHeight: "100vh" }}
+    >
       <div className="row g-4">
-        
         {/* Kolom Utama (Kiri) */}
         <div className="col-lg-9">
           <div className="row g-4">
-            
-            {/* 1. Komponen Streaming CCTV (UPDATED) */}
+            {/* 1. Komponen Streaming CCTV */}
             <div className="col-12">
-              {/* * KITA MELEMPARKAN 'setNotifications' SEBAGAI PROP
-                * agar komponen CCTVStream bisa menambah notifikasi baru
-              */}
-              <CCTVStream setNotifications={setNotifications} />
+              {/* <-- DIUBAH: Prop setNotifications dihapus */}
+              <CCTVStream />
             </div>
 
-            {/* 2. Daftar Karyawan (Tanpa Perubahan) */}
+            {/* 2. Daftar Karyawan */}
             <div className="col-12">
-              <EmployeeList employees={employees} onDeleteEmployee={handleDeleteEmployee} />
+              <EmployeeList
+                employees={employees}
+                onDeleteEmployee={handleDeleteEmployee}
+              />
             </div>
-            
-            {/* 3. Form Data Karyawan (Tanpa Perubahan) */}
+
+            {/* 3. Form Data Karyawan */}
             <div className="col-md-6">
               <EmployeeForm onAddEmployee={handleAddEmployee} />
             </div>
-            
-            {/* 4. Form Jam Masuk Kantor (Tanpa Perubahan) */}
+
+            {/* 4. Form Jam Masuk Kantor */}
             <div className="col-md-6">
-              <ScheduleForm />
+              <ScheduleForm
+                initialSchedule={schedule}
+                onSaveSchedule={handleSaveSchedule}
+              />
             </div>
           </div>
         </div>
 
         {/* Kolom Sidebar (Kanan) */}
         <div className="col-lg-3">
-          {/* 5. Kolom Notifikasi (Tanpa Perubahan) */}
-          <NotificationPanel notifications={notifications} />
+          {/* 5. Kolom Notifikasi */}
+          {/* <-- DIUBAH: Prop notifications dihapus */}
+          <NotificationPanel />
         </div>
-        
       </div>
     </div>
   );
@@ -89,160 +238,134 @@ export default function Dashboard() {
 
 /**
  * =============================================
- * 1. KOMPONEN STREAM CCTV (UPDATED DENGAN LOGIKA WEBSOCKET)
+ * 1. KOMPONEN STREAM CCTV (DIUBAH)
+ * - Prop 'setNotifications' dihapus
+ * - Semua pemanggilan 'setNotifications' dihapus
  * =============================================
  */
-function CCTVStream({ setNotifications }) {
-  const [motionStatus, setMotionStatus] = useState('-');
-  
-  // Refs untuk elemen DOM (cara React untuk document.getElementById)
+// <-- DIUBAH: Prop { setNotifications } dihapus
+function CCTVStream() {
+  const [motionStatus, setMotionStatus] = useState("-");
   const imgRef = useRef(null);
   const canvasRef = useRef(null);
-  
-  // Refs untuk menyimpan status sebelumnya (mencegah spam notifikasi)
-  const lastMotionStatus = useRef('-');
+  const lastMotionStatus = useRef("-");
   const lastFaceCount = useRef(0);
 
-  // useEffect untuk setup WebSocket dan event listeners
   useEffect(() => {
     const img = imgRef.current;
     const canvas = canvasRef.current;
     if (!img || !canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
 
-    // Fungsi untuk sinkronisasi ukuran canvas dengan gambar
     function resizeCanvas() {
       canvas.width = img.clientWidth;
       canvas.height = img.clientHeight;
     }
 
-    // Event listeners untuk resize
-    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener("resize", resizeCanvas);
     img.onload = resizeCanvas;
-    resizeCanvas(); // Panggil sekali saat inisialisasi
+    resizeCanvas();
 
-    // 🔥 Setup WebSocket
     const ws = new WebSocket(`ws://localhost:8000/ws/detection`);
 
     ws.onopen = () => {
-      console.log('WebSocket connected');
-      setNotifications(prev => [
-        ...prev,
-        { id: Date.now(), text: 'CCTV stream connected', type: 'user' }
-      ]);
+      console.log("WebSocket connected");
+      // <-- DIHAPUS: setNotifications(...)
     };
 
     ws.onclose = () => {
-      console.log('WebSocket disconnected');
-      setNotifications(prev => [
-        ...prev,
-        { id: Date.now(), text: 'CCTV stream disconnected', type: 'alert' }
-      ]);
+      console.log("WebSocket disconnected");
+      // <-- DIHAPUS: setNotifications(...)
     };
 
-    // 🔥 Menerima pesan dari WebSocket
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      resizeCanvas(); // Pastikan ukuran canvas selalu pas
+      resizeCanvas();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // 1. Logika deteksi Wajah
       if (data.faces && Array.isArray(data.faces)) {
         const scaleX = canvas.width / (data.frame_width || 640);
         const scaleY = canvas.height / (data.frame_height || 480);
-        
-        // Notifikasi jika ada wajah baru terdeteksi
-        if (data.faces.length > 0 && lastFaceCount.current === 0) {
-          const label = data.faces[0].label;
-          const text = label !== 'Unknown' ? `Face detected: ${label}` : 'Unknown face detected';
-          setNotifications(prev => [...prev, { id: Date.now(), text: text, type: 'user' }]);
-        }
-        lastFaceCount.current = data.faces.length; // Update jumlah wajah
 
-        // Gambar kotak di canvas
-        data.faces.forEach(face => {
+        if (data.faces.length > 0 && lastFaceCount.current === 0) {
+          // <-- DIHAPUS: setNotifications(...)
+        }
+        lastFaceCount.current = data.faces.length;
+
+        data.faces.forEach((face) => {
           const { top, left, bottom, right, label } = face;
           const x = left * scaleX;
           const y = top * scaleY;
           const w = (right - left) * scaleX;
           const h = (bottom - top) * scaleY;
 
-          ctx.strokeStyle = 'lime';
+          ctx.strokeStyle = "lime";
           ctx.lineWidth = 2;
           ctx.strokeRect(x, y, w, h);
-          ctx.fillStyle = 'lime';
-          ctx.font = '16px Arial';
+          ctx.fillStyle = "lime";
+          ctx.font = "16px Arial";
           ctx.fillText(label, x + 5, y - 5);
         });
       } else {
-        lastFaceCount.current = 0; // Reset jika tidak ada wajah
+        lastFaceCount.current = 0;
       }
 
-      // 2. Logika deteksi Gerakan
-      const currentMotion = data.motion || '-';
-      setMotionStatus(currentMotion); // Update status di footer
+      const currentMotion = data.motion || "-";
+      setMotionStatus(currentMotion);
 
-      // Notifikasi jika status gerakan berubah
-      if (currentMotion !== '-' && lastMotionStatus.current === '-') {
-        setNotifications(prev => [...prev, { id: Date.now() + 1, text: `Motion detected: ${currentMotion}`, type: 'motion' }]);
+      if (currentMotion !== "-" && lastMotionStatus.current === "-") {
+        // <-- DIHAPUS: setNotifications(...)
       }
-      lastMotionStatus.current = currentMotion; // Update status gerakan
+      lastMotionStatus.current = currentMotion;
     };
 
-    // 🔥 Fungsi Cleanup: Berjalan saat komponen unmount
     return () => {
-      window.removeEventListener('resize', resizeCanvas);
+      window.removeEventListener("resize", resizeCanvas);
       img.onload = null;
       ws.close();
     };
-
-  }, [setNotifications]); // Dependency array
+  }, []); // <-- DIUBAH: dependensi setNotifications dihapus
 
   return (
     <div className="card shadow-sm h-100">
       <div className="card-header d-flex justify-content-between align-items-center">
         <h5 className="mb-0">
-          <CameraVideo className="me-2" style={{ verticalAlign: 'middle' }} />
+          <CameraVideo className="me-2" style={{ verticalAlign: "middle" }} />
           CCTV Live Stream - Lobby
         </h5>
         <span className="badge bg-danger d-flex align-items-center">
           <Broadcast className="me-1" /> LIVE
         </span>
       </div>
-      
-      {/* Container untuk stream dan overlay canvas */}
+
       <div className="card-body p-0 position-relative">
-        {/* Gambar stream MJPEG */}
         <img
           ref={imgRef}
           id="stream"
-          src="http://localhost:8000/mjpeg" // Sumber gambar dari backend Anda
+          src="http://localhost:8000/mjpeg"
           className="img-fluid rounded-top"
           alt="CCTV Stream"
-          style={{ width: '100%' }}
+          style={{ width: "100%" }}
         />
-        {/* Canvas untuk overlay deteksi */}
         <canvas
           ref={canvasRef}
           id="overlay"
           className="position-absolute top-0 start-0"
-          style={{ pointerEvents: 'none' }} // Agar bisa klik menembus canvas
+          style={{ pointerEvents: "none" }}
         />
       </div>
-      
+
       <div className="card-footer text-muted">
-        {/* Menampilkan status gerakan yang di-update oleh WebSocket */}
         <strong>Motion Status:</strong> {motionStatus}
       </div>
     </div>
   );
 }
 
-
 /**
  * =============================================
- * 2. KOMPONEN DAFTAR KARYAWAN (Tanpa Perubahan)
+ * 2. KOMPONEN DAFTAR KARYAWAN (Tidak ada perubahan)
  * =============================================
  */
 function EmployeeList({ employees, onDeleteEmployee }) {
@@ -250,18 +373,25 @@ function EmployeeList({ employees, onDeleteEmployee }) {
     <div className="card shadow-sm h-100">
       <div className="card-header">
         <h5 className="mb-0">
-          <People className="me-2" style={{ verticalAlign: 'middle' }} />
+          <People className="me-2" style={{ verticalAlign: "middle" }} />
           Daftar Karyawan ({employees.length})
         </h5>
       </div>
-      <div className="card-body" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+      <div
+        className="card-body"
+        style={{ maxHeight: "400px", overflowY: "auto" }}
+      >
         {employees.length === 0 ? (
           <p className="text-center text-muted">Belum ada data karyawan.</p>
         ) : (
           <div className="table-responsive">
             <table className="table table-hover table-striped align-middle">
-              <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
+              <thead
+                className="table-light"
+                style={{ position: "sticky", top: 0 }}
+              >
                 <tr>
+                  <th scope="col">Foto</th>
                   <th scope="col">Nama</th>
                   <th scope="col">Posisi</th>
                   <th scope="col">Akses</th>
@@ -270,14 +400,34 @@ function EmployeeList({ employees, onDeleteEmployee }) {
                 </tr>
               </thead>
               <tbody>
-                {employees.map(emp => (
+                {employees.map((emp) => (
                   <tr key={emp.id}>
+                    <td>
+                      <img
+                        src={emp.fotoUrl || "https://via.placeholder.com/50"}
+                        alt={emp.nama}
+                        style={{
+                          width: "40px",
+                          height: "40px",
+                          borderRadius: "50%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    </td>
                     <td>{emp.nama}</td>
                     <td>{emp.posisi}</td>
-                    <td><span className={`badge ${emp.akses === 'Admin' ? 'bg-danger' : 'bg-secondary'}`}>{emp.akses}</span></td>
-                    <td>{emp.plat || '-'}</td>
                     <td>
-                      <button 
+                      <span
+                        className={`badge ${
+                          emp.akses === "Admin" ? "bg-danger" : "bg-secondary"
+                        }`}
+                      >
+                        {emp.akses}
+                      </span>
+                    </td>
+                    <td>{emp.plat || "-"}</td>
+                    <td>
+                      <button
                         className="btn btn-outline-danger btn-sm"
                         onClick={() => onDeleteEmployee(emp.id)}
                         title="Hapus Karyawan"
@@ -296,45 +446,74 @@ function EmployeeList({ employees, onDeleteEmployee }) {
   );
 }
 
-
 /**
  * =============================================
- * 3. KOMPONEN FORM KARYAWAN (Tanpa Perubahan)
+ * 3. KOMPONEN FORM KARYAWAN (Tidak ada perubahan)
  * =============================================
  */
-function EmployeeForm({ onAddEmployee }) { 
-  const [nama, setNama] = useState('');
-  const [posisi, setPosisi] = useState('');
-  const [tingkatAkses, setTingkatAkses] = useState('Staff');
-  const [platNomor, setPlatNomor] = useState('');
+function EmployeeForm({ onAddEmployee }) {
+  const [nama, setNama] = useState("");
+  const [posisi, setPosisi] = useState("");
+  const [tingkatAkses, setTingkatAkses] = useState("Staff");
+  const [platNomor, setPlatNomor] = useState("");
+  const [foto, setFoto] = useState(null);
+  const [fileName, setFileName] = useState("Pilih foto...");
+
+  const handleFotoChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFoto(file);
+      setFileName(file.name);
+    } else {
+      setFoto(null);
+      setFileName("Pilih foto...");
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onAddEmployee({ 
-      nama: nama, 
-      posisi: posisi, 
-      akses: tingkatAkses, 
-      plat: platNomor 
-    });
-    setNama('');
-    setPosisi('');
-    setTingkatAkses('Staff');
-    setPlatNomor('');
+
+    if (!foto) {
+      alert("Silakan upload foto diri.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("nama", nama);
+    formData.append("posisi", posisi);
+    formData.append("akses", tingkatAkses);
+    formData.append("plat", platNomor);
+    formData.append("foto", foto);
+
+    onAddEmployee(formData);
+
+    setNama("");
+    setPosisi("");
+    setTingkatAkses("Staff");
+    setPlatNomor("");
+    setFoto(null);
+    setFileName("Pilih foto...");
+    e.target.reset();
   };
 
   return (
     <div className="card shadow-sm h-100">
       <div className="card-header">
         <h5 className="mb-0">
-          <PersonPlus className="me-2" style={{ verticalAlign: 'middle' }} />
+          <PersonPlus className="me-2" style={{ verticalAlign: "middle" }} />
           Input Data Karyawan
         </h5>
       </div>
       <div className="card-body">
         <form onSubmit={handleSubmit}>
-          <label htmlFor="nama" className="form-label">Nama Lengkap</label>
+          {/* Form Nama */}
+          <label htmlFor="nama" className="form-label">
+            Nama Lengkap
+          </label>
           <div className="input-group mb-3">
-            <span className="input-group-text"><Person /></span>
+            <span className="input-group-text">
+              <Person />
+            </span>
             <input
               type="text"
               className="form-control"
@@ -345,9 +524,15 @@ function EmployeeForm({ onAddEmployee }) {
               required
             />
           </div>
-          <label htmlFor="posisi" className="form-label">Posisi</label>
+
+          {/* Form Posisi */}
+          <label htmlFor="posisi" className="form-label">
+            Posisi
+          </label>
           <div className="input-group mb-3">
-            <span className="input-group-text"><Briefcase /></span>
+            <span className="input-group-text">
+              <Briefcase />
+            </span>
             <input
               type="text"
               className="form-control"
@@ -358,9 +543,15 @@ function EmployeeForm({ onAddEmployee }) {
               required
             />
           </div>
-          <label htmlFor="tingkatAkses" className="form-label">Tingkatan Akses</label>
+
+          {/* Form Tingkat Akses */}
+          <label htmlFor="tingkatAkses" className="form-label">
+            Tingkatan Akses
+          </label>
           <div className="input-group mb-3">
-            <span className="input-group-text"><ShieldCheck /></span>
+            <span className="input-group-text">
+              <ShieldCheck />
+            </span>
             <select
               className="form-select"
               id="tingkatAkses"
@@ -373,9 +564,15 @@ function EmployeeForm({ onAddEmployee }) {
               <option value="Admin">Admin</option>
             </select>
           </div>
-          <label htmlFor="platNomor" className="form-label">Plat Nomor (Opsional)</label>
+
+          {/* Form Plat Nomor */}
+          <label htmlFor="platNomor" className="form-label">
+            Plat Nomor (Opsional)
+          </label>
           <div className="input-group mb-3">
-            <span className="input-group-text"><CarFront /></span>
+            <span className="input-group-text">
+              <CarFront />
+            </span>
             <input
               type="text"
               className="form-control"
@@ -385,7 +582,29 @@ function EmployeeForm({ onAddEmployee }) {
               placeholder="Contoh: B 1234 XYZ"
             />
           </div>
-          <button type="submit" className="btn btn-primary w-100 mt-2 d-flex align-items-center justify-content-center">
+
+          {/* Form Upload Foto */}
+          <label htmlFor="foto" className="form-label">
+            Foto Diri
+          </label>
+          <div className="input-group mb-3">
+            <span className="input-group-text">
+              <CloudUpload />
+            </span>
+            <input
+              type="file"
+              className="form-control"
+              id="foto"
+              accept="image/jpeg, image/png"
+              onChange={handleFotoChange}
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary w-100 mt-2 d-flex align-items-center justify-content-center"
+          >
             <Save className="me-2" />
             Simpan Karyawan
           </button>
@@ -397,22 +616,20 @@ function EmployeeForm({ onAddEmployee }) {
 
 /**
  * =============================================
- * 4. KOMPONEN FORM JAM MASUK (Tanpa Perubahan)
+ * 4. KOMPONEN FORM JAM MASUK (Tidak ada perubahan)
  * =============================================
  */
-function ScheduleForm() {
-  const [jadwal, setJadwal] = useState({
-    Senin: { masuk: '08:00', keluar: '17:00' },
-    Selasa: { masuk: '08:00', keluar: '17:00' },
-    Rabu: { masuk: '08:00', keluar: '17:00' },
-    Kamis: { masuk: '08:00', keluar: '17:00' },
-    Jumat: { masuk: '08:00', keluar: '17:00' },
-    Sabtu: { masuk: '09:00', keluar: '13:00' },
-    Minggu: { masuk: '00:00', keluar: '00:00' },
-  });
+function ScheduleForm({ initialSchedule, onSaveSchedule }) {
+  const [jadwal, setJadwal] = useState(initialSchedule || {});
+
+  useEffect(() => {
+    if (initialSchedule) {
+      setJadwal(initialSchedule);
+    }
+  }, [initialSchedule]);
 
   const handleTimeChange = (hari, tipe, waktu) => {
-    setJadwal(prev => ({
+    setJadwal((prev) => ({
       ...prev,
       [hari]: {
         ...prev[hari],
@@ -423,21 +640,30 @@ function ScheduleForm() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    console.log('Data Jam Kantor Baru:', jadwal);
-    alert('Jam kantor berhasil diperbarui!');
+    onSaveSchedule(jadwal);
   };
+
+  if (Object.keys(jadwal).length === 0) {
+    return (
+      <div className="card shadow-sm h-100 d-flex justify-content-center align-items-center">
+        <div className="spinner-border spinner-border-sm" role="status">
+          <span className="visually-hidden">Loading schedule...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="card shadow-sm h-100">
       <div className="card-header">
         <h5 className="mb-0">
-          <ClockHistory className="me-2" style={{ verticalAlign: 'middle' }} />
+          <ClockHistory className="me-2" style={{ verticalAlign: "middle" }} />
           Input Jam Kantor (7 Hari)
         </h5>
       </div>
       <div className="card-body">
         <form onSubmit={handleSubmit}>
-          {Object.keys(jadwal).map(hari => (
+          {Object.keys(jadwal).map((hari) => (
             <div key={hari} className="row g-2 mb-2 align-items-center">
               <div className="col-3">
                 <label className="form-label mb-0 fw-medium">{hari}</label>
@@ -445,10 +671,13 @@ function ScheduleForm() {
               <div className="col-4">
                 <input
                   type="time"
-                  className="form-control form-control-sm"
+                  className="form-control form-control-sm text-center"
                   aria-label={`Jam Masuk ${hari}`}
                   value={jadwal[hari].masuk}
-                  onChange={(e) => handleTimeChange(hari, 'masuk', e.target.value)}
+                  onChange={(e) =>
+                    handleTimeChange(hari, "masuk", e.target.value)
+                  }
+                  style={{ colorScheme: "light" }}
                   required
                 />
               </div>
@@ -456,16 +685,22 @@ function ScheduleForm() {
               <div className="col-4">
                 <input
                   type="time"
-                  className="form-control form-control-sm"
+                  className="form-control form-control-sm text-center"
                   aria-label={`Jam Keluar ${hari}`}
                   value={jadwal[hari].keluar}
-                  onChange={(e) => handleTimeChange(hari, 'keluar', e.target.value)}
+                  onChange={(e) =>
+                    handleTimeChange(hari, "keluar", e.target.value)
+                  }
+                  style={{ colorScheme: "light" }}
                   required
                 />
               </div>
             </div>
           ))}
-          <button type="submit" className="btn btn-primary w-100 mt-3 d-flex align-items-center justify-content-center">
+          <button
+            type="submit"
+            className="btn btn-primary w-100 mt-3 d-flex align-items-center justify-content-center"
+          >
             <Save className="me-2" />
             Simpan Jadwal
           </button>
@@ -475,47 +710,89 @@ function ScheduleForm() {
   );
 }
 
-
 /**
  * =============================================
- * 5. KOMPONEN PANEL NOTIFIKASI (Tanpa Perubahan)
+ * 5. KOMPONEN PANEL NOTIFIKASI (DIUBAH)
+ * - Sekarang hanya menampilkan 1 pesan terbaru
+ * - Pesan baru akan menggantikan pesan lama
  * =============================================
  */
-function NotificationPanel({ notifications }) {
-  
-  const getNotificationIcon = (type) => {
-    switch (type) {
-      case 'motion':
-        return <Broadcast className="me-3 text-primary" size={20} />;
-      case 'alert':
-        return <ExclamationTriangle className="me-3 text-danger" size={20} />;
-      case 'user':
-        return <PersonCheck className="me-3 text-success" size={20} />;
-      default:
-        return <Bell className="me-3 text-muted" size={20} />;
+function NotificationPanel() {
+  // <-- PERUBAHAN 1: State diubah dari array ke satu objek (null)
+  const [message, setMessage] = useState(null);
+
+  useEffect(() => {
+    // 1. Fungsi untuk mengambil data awal (1 pesan terakhir)
+    async function fetchInitialMessage() {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1); // <-- PERUBAHAN 2: Hanya ambil 1 data terbaru
+
+      if (data && data.length > 0) {
+        // <-- PERUBAHAN 3: Set state sebagai objek, bukan array
+        setMessage(data[0]);
+      } else {
+        console.error("Error fetching initial message:", error);
+      }
     }
+
+    fetchInitialMessage();
+
+    // 2. Setup subscription Real-time untuk pesan BARU
+    const channel = supabase
+      .channel("public:messages")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+        },
+        (payload) => {
+          // <-- PERUBAHAN 4: Langsung GANTI state dengan pesan baru
+          setMessage(payload.new);
+        }
+      )
+      .subscribe();
+
+    // 3. Fungsi Cleanup
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []); // [] = Hanya berjalan sekali saat komponen dimuat
+
+  // Ikon default
+  const getNotificationIcon = () => {
+    return <Broadcast className="me-3 text-primary" size={20} />;
   };
 
   return (
     <div className="card shadow-sm h-100">
       <div className="card-header">
         <h5 className="mb-0">
-          <Bell className="me-2" style={{ verticalAlign: 'middle' }} />
-          Notifikasi
+          <Bell className="me-2" style={{ verticalAlign: "middle" }} />
+          Notifikasi Real-time
         </h5>
       </div>
       <div className="card-body p-0">
-        <ul className="list-group list-group-flush" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
-          {notifications.length > 0 ? (
-            [...notifications].reverse().map(notif => (
-              <li key={notif.id} className="list-group-item list-group-item-action d-flex align-items-center">
-                {getNotificationIcon(notif.type)}
-                <span>{notif.text}</span>
-              </li>
-            ))
+        <ul
+          className="list-group list-group-flush"
+          // Hapus style maxHeight agar ukuran pas
+        >
+          {/* <-- PERUBAHAN 5: Render satu item, bukan .map() --> */}
+          {message ? (
+            <li
+              key={message.id} // Gunakan ID dari database
+              className="list-group-item list-group-item-action d-flex align-items-center"
+            >
+              {getNotificationIcon()}
+              <span>{message.content}</span>
+            </li>
           ) : (
             <li className="list-group-item text-muted">
-              Tidak ada notifikasi baru.
+              Menunggu notifikasi...
             </li>
           )}
         </ul>

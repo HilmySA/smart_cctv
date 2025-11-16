@@ -15,7 +15,7 @@ class CreateKaryawan extends Migration
                 'unsigned'       => true,
                 'auto_increment' => true,
             ],
-            'nama_lengkap' => [
+            'nama' => [
                 'type'       => 'VARCHAR',
                 'constraint' => '255',
             ],
@@ -23,15 +23,19 @@ class CreateKaryawan extends Migration
                 'type'       => 'VARCHAR',
                 'constraint' => '100',
             ],
-            'tingkatan_akses' => [
+            'akses' => [
                 'type'       => 'VARCHAR',
                 'constraint' => 20,
                 'default'    => 'Staff',
             ],
-            'plat_nomor' => [
+            'plat' => [
                 'type'       => 'VARCHAR',
                 'constraint' => '20',
                 'null'       => true,
+            ],
+            'foto_url' => [
+                'type'       => 'VARCHAR',
+                'constraint' => '255',
             ],
             'created_at' => [
                 'type' => 'DATETIME',
@@ -44,7 +48,9 @@ class CreateKaryawan extends Migration
         ]);
         $this->forge->addKey('id', true);
         $this->forge->createTable('karyawan');
-        $this->db->query("ALTER TABLE karyawan ADD CONSTRAINT chk_tingkatan_akses CHECK (tingkatan_akses IN ('Staff', 'Admin', 'Manager'));");
+
+        // Constraint diperbaiki: ganti 'tingkatan_akses' menjadi 'akses'
+        $this->db->query("ALTER TABLE karyawan ADD CONSTRAINT chk_akses CHECK (akses IN ('Staff', 'Supervisor', 'Manager', 'Admin'));");
     }
 
     public function down()
