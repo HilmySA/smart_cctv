@@ -2,8 +2,9 @@
 
 1. Buat environment conda dengan mamba dan install
 
+- conda activate base
 - mamba env create -f environment.yml
-- mamba activate faceenv
+- mamba activate condaenv
 
 3. Install yang hanya ada di pip PiPy
 
@@ -27,3 +28,6 @@
 
 #RUN GSTREAMER
 gst-launch-1.0.exe rtspsrc location=rtsp://10.15.221.182:8080/h264.sdp latency=0 ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=BGR ! tcpserversink host=127.0.0.1 port=5000
+
+#Backend
+- sudo systemctl enable apache2

@@ -5,13 +5,13 @@ import re
 import base64
 import traceback
 import numpy as np
-import easyocr
+from paddleocr import PaddleOCR  # <-- DIUBAH: Impor PaddleOCR
 from PIL import Image
 
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# Pattern plat Indonesia
+# Pattern plat Indonesia (TIDAK BERUBAH)
 # ============================================================
 PLAT_REGEX = re.compile(r"^[A-Z]{1,2}[0-9]{1,4}[A-Z]{0,3}$")
 
@@ -19,7 +19,6 @@ def is_valid_plate(text: str) -> bool:
     return bool(PLAT_REGEX.match(text))
 
 def format_plate(text: str) -> str:
-    
     t = text.upper()
     m = re.match(r"^([A-Z]{1,2})([0-9]{1,4})([A-Z]{0,3})$", t)
     if not m:
@@ -30,7 +29,7 @@ def format_plate(text: str) -> str:
     return f"{part1} {nums}"
 
 # ============================================================
-# Anti false positive
+# Anti false positive (TIDAK BERUBAH)
 # ============================================================
 CHAR_MAP = {
     '0': 'O',
@@ -45,7 +44,7 @@ def clean_text(txt: str) -> str:
     return ''.join(CHAR_MAP.get(c, c) for c in txt)
 
 # ============================================================
-# Crop to base64
+# Crop to base64 (TIDAK BERUBAH)
 # ============================================================
 def crop_to_b64(img):
     if img is None or img.size == 0:
@@ -56,7 +55,7 @@ def crop_to_b64(img):
     return "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode()
 
 # ============================================================
-# Warna plat
+# Warna plat (TIDAK BERUBAH)
 # ============================================================
 def detect_color(crop):
     try:
@@ -75,15 +74,19 @@ def detect_color(crop):
 
 
 # ============================================================
-# ANPR (EasyOCR version)
+# ANPR (PaddleOCR version) <-- DIUBAH
 # ============================================================
 class ANPRRecognizer:
     def __init__(self):
         try:
-            self.reader = easyocr.Reader(['en'], gpu=False)
-            logger.info("EasyOCR ANPR loaded.")
+            # Inisialisasi PaddleOCR
+            # lang='en' -> Cocok dengan EasyOCR ['en']
+            # use_gpu=False -> Cocok dengan EasyOCR gpu=False
+            # show_log=False -> Matikan pesan log yang berisik
+            self.reader = PaddleOCR(lang='en')
+            logger.info("PaddleOCR ANPR loaded.")
         except Exception as e:
-            logger.error(f"Gagal load EasyOCR: {e}")
+            logger.error(f"Gagal load PaddleOCR: {e}")
             self.reader = None
 
         self.conf_threshold = 0.40
@@ -93,17 +96,22 @@ class ANPRRecognizer:
             return "Error: OCR not initialized"
 
         try:
-            results = self.reader.readtext(frame)
+            # Panggil PaddleOCR. cls=False untuk menonaktifkan klasifikasi sudut (lebih cepat)
+            results = self.reader.ocr(frame, cls=False)
             formatted_results = []
 
-            if not results:
+            # Hasil PaddleOCR ada di dalam list pertama, bisa None jika tidak ada
+            if not results or results[0] is None:
                 return "No plate detected"
 
-            for item in results:
-                if len(item) != 3:
+            # Iterasi hasil deteksi
+            for item in results[0]:
+                if not item:
                     continue
 
-                bbox, text, prob = item
+                # Struktur hasil Paddle: [bbox, (text, prob)]
+                bbox_coords, text_prob = item
+                text, prob = text_prob
 
                 if prob is None or prob < self.conf_threshold:
                     continue
@@ -113,19 +121,19 @@ class ANPRRecognizer:
 
                 clean_txt = clean_text(text)
 
-                # Filter plat
+                # Filter plat (Pakai fungsi helper Anda yang sudah ada)
                 if not is_valid_plate(clean_txt):
                     continue
 
-                # Ambil bbox
-                pts = np.array(bbox).astype(int)
+                # Ambil bbox (Logika ini sama persis dengan kode Anda sebelumnya)
+                pts = np.array(bbox_coords).astype(int)
                 xs = pts[:, 0]
                 ys = pts[:, 1]
 
                 left, right = xs.min(), xs.max()
                 top, bottom = ys.min(), ys.max()
 
-                # Validasi area
+                # Validasi area (Logika ini sama persis)
                 if top < 0 or left < 0 or bottom <= top or right <= left:
                     continue
 
@@ -146,6 +154,6 @@ class ANPRRecognizer:
 
 
 # ============================================================
-# Instance global
+# Instance global (TIDAK BERUBAH)
 # ============================================================
 anpr_recognizer = ANPRRecognizer()

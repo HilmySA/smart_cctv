@@ -307,16 +307,12 @@ class StreamController:
                     face_results = recognizer.verify_face(frame)
                     if isinstance(face_results, list):
                         self.last_face_data = face_results
-                        # ➕ BARU: Panggil handler logika baru
                         self.handle_face_detection(face_results) 
                     else:
                         self.last_face_data = [] 
                 
                 if self.analysis_counter > 1000:
                     self.analysis_counter = 0
-
-                # ❌ DIHAPUS: Logika 'send_to_mqtt' lama dihapus 
-                #    karena sudah ditangani oleh 'handle_face_detection'
 
                 self.last_update = datetime.now(timezone.utc)
                 self.push_ws_update() 
@@ -356,8 +352,3 @@ class StreamController:
                 await websocket.receive_text() 
         except Exception:
             self.active_websockets.remove(websocket)
-
-    # ❌ DIHAPUS: Fungsi 'send_to_mqtt' yang lama
-    # Fungsi ini telah digantikan oleh:
-    # 1. send_actuator_mqtt()
-    # 2. send_detection_log_mqtt()
