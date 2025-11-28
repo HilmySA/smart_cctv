@@ -1,7 +1,5 @@
-// Import React Hooks
 import React, { useState, useEffect, useRef } from "react";
 
-// Import icons
 import {
   CameraVideo,
   Bell,
@@ -20,28 +18,15 @@ import {
   CloudUpload,
 } from "react-bootstrap-icons";
 
-// <-- BARU: Import client Supabase
 import { supabase } from "../api/supabaseClient";
 
-// =============================================
-// KONFIGURASI API
-// =============================================
 const API_BASE_URL = "http://localhost:8080/api";
 
-/**
- * =============================================
- * KOMPONEN UTAMA: DASHBOARD (UPDATED DENGAN API)
- * =============================================
- */
 export default function Dashboard() {
-  // <-- DIHAPUS: State notifikasi lokal sudah tidak diperlukan
-  // const [notifications, setNotifications] = useState([...]);
 
-  // State untuk data dari API
   const [employees, setEmployees] = useState([]);
   const [schedule, setSchedule] = useState(null);
 
-  // State untuk loading & error
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -74,10 +59,9 @@ export default function Dashboard() {
         setEmployees(employeeData);
         setSchedule(scheduleObject);
 
-        // <-- DIHAPUS: setNotifications(...)
       } catch (err) {
         setError(err.message);
-        // <-- DIHAPUS: setNotifications(...)
+        
       } finally {
         setLoading(false);
       }
@@ -100,10 +84,8 @@ export default function Dashboard() {
       const newEmployee = await response.json();
       setEmployees((prev) => [...prev, newEmployee]);
 
-      // <-- DIHAPUS: setNotifications(...)
     } catch (err) {
       setError(err.message);
-      // <-- DIHAPUS: setNotifications(...)
     }
   };
 
@@ -126,11 +108,8 @@ export default function Dashboard() {
         }
 
         setEmployees(employees.filter((emp) => emp.id !== id));
-        // <-- DIHAPUS: setNotifications(...)
       } catch (err) {
-        setError(err.message);
-        // <-- DIHAPUS: setNotifications(...)
-      }
+        setError(err.message);      }
     }
   };
 
@@ -150,14 +129,11 @@ export default function Dashboard() {
 
       const updatedSchedule = await response.json();
       setSchedule(updatedSchedule);
-      // <-- DIHAPUS: setNotifications(...)
     } catch (err) {
       setError(err.message);
-      // <-- DIHAPUS: setNotifications(...)
     }
   };
 
-  // Tampilkan UI Loading atau Error
   if (loading) {
     return (
       <div
@@ -186,7 +162,6 @@ export default function Dashboard() {
     );
   }
 
-  // Tampilkan Dashboard jika data berhasil dimuat
   return (
     <div
       className="container-fluid p-4"
@@ -196,9 +171,7 @@ export default function Dashboard() {
         {/* Kolom Utama (Kiri) */}
         <div className="col-lg-9">
           <div className="row g-4">
-            {/* 1. Komponen Streaming CCTV */}
             <div className="col-12">
-              {/* <-- DIUBAH: Prop setNotifications dihapus */}
               <CCTVStream />
             </div>
 
@@ -228,7 +201,6 @@ export default function Dashboard() {
         {/* Kolom Sidebar (Kanan) */}
         <div className="col-lg-3">
           {/* 5. Kolom Notifikasi */}
-          {/* <-- DIUBAH: Prop notifications dihapus */}
           <NotificationPanel />
         </div>
       </div>
@@ -236,14 +208,6 @@ export default function Dashboard() {
   );
 }
 
-/**
- * =============================================
- * 1. KOMPONEN STREAM CCTV (DIUBAH)
- * - Prop 'setNotifications' dihapus
- * - Semua pemanggilan 'setNotifications' dihapus
- * =============================================
- */
-// <-- DIUBAH: Prop { setNotifications } dihapus
 function CCTVStream() {
   const [motionStatus, setMotionStatus] = useState("-");
   const imgRef = useRef(null);
@@ -271,12 +235,10 @@ function CCTVStream() {
 
     ws.onopen = () => {
       console.log("WebSocket connected");
-      // <-- DIHAPUS: setNotifications(...)
     };
 
     ws.onclose = () => {
       console.log("WebSocket disconnected");
-      // <-- DIHAPUS: setNotifications(...)
     };
 
     ws.onmessage = (event) => {
@@ -289,7 +251,6 @@ function CCTVStream() {
         const scaleY = canvas.height / (data.frame_height || 480);
 
         if (data.faces.length > 0 && lastFaceCount.current === 0) {
-          // <-- DIHAPUS: setNotifications(...)
         }
         lastFaceCount.current = data.faces.length;
 
@@ -315,7 +276,6 @@ function CCTVStream() {
       setMotionStatus(currentMotion);
 
       if (currentMotion !== "-" && lastMotionStatus.current === "-") {
-        // <-- DIHAPUS: setNotifications(...)
       }
       lastMotionStatus.current = currentMotion;
     };
@@ -325,7 +285,7 @@ function CCTVStream() {
       img.onload = null;
       ws.close();
     };
-  }, []); // <-- DIUBAH: dependensi setNotifications dihapus
+  }, []);
 
   return (
     <div className="card shadow-sm h-100">
@@ -363,11 +323,6 @@ function CCTVStream() {
   );
 }
 
-/**
- * =============================================
- * 2. KOMPONEN DAFTAR KARYAWAN (Tidak ada perubahan)
- * =============================================
- */
 function EmployeeList({ employees, onDeleteEmployee }) {
   return (
     <div className="card shadow-sm h-100">
@@ -446,11 +401,6 @@ function EmployeeList({ employees, onDeleteEmployee }) {
   );
 }
 
-/**
- * =============================================
- * 3. KOMPONEN FORM KARYAWAN (Tidak ada perubahan)
- * =============================================
- */
 function EmployeeForm({ onAddEmployee }) {
   const [nama, setNama] = useState("");
   const [posisi, setPosisi] = useState("");
@@ -614,11 +564,7 @@ function EmployeeForm({ onAddEmployee }) {
   );
 }
 
-/**
- * =============================================
- * 4. KOMPONEN FORM JAM MASUK (Tidak ada perubahan)
- * =============================================
- */
+
 function ScheduleForm({ initialSchedule, onSaveSchedule }) {
   const [jadwal, setJadwal] = useState(initialSchedule || {});
 
@@ -710,28 +656,18 @@ function ScheduleForm({ initialSchedule, onSaveSchedule }) {
   );
 }
 
-/**
- * =============================================
- * 5. KOMPONEN PANEL NOTIFIKASI (DIUBAH)
- * - Sekarang hanya menampilkan 1 pesan terbaru
- * - Pesan baru akan menggantikan pesan lama
- * =============================================
- */
 function NotificationPanel() {
-  // <-- PERUBAHAN 1: State diubah dari array ke satu objek (null)
   const [message, setMessage] = useState(null);
 
   useEffect(() => {
-    // 1. Fungsi untuk mengambil data awal (1 pesan terakhir)
     async function fetchInitialMessage() {
       const { data, error } = await supabase
         .from("messages")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(1); // <-- PERUBAHAN 2: Hanya ambil 1 data terbaru
+        .limit(1);
 
       if (data && data.length > 0) {
-        // <-- PERUBAHAN 3: Set state sebagai objek, bukan array
         setMessage(data[0]);
       } else {
         console.error("Error fetching initial message:", error);
@@ -740,7 +676,6 @@ function NotificationPanel() {
 
     fetchInitialMessage();
 
-    // 2. Setup subscription Real-time untuk pesan BARU
     const channel = supabase
       .channel("public:messages")
       .on(
@@ -751,19 +686,16 @@ function NotificationPanel() {
           table: "messages",
         },
         (payload) => {
-          // <-- PERUBAHAN 4: Langsung GANTI state dengan pesan baru
           setMessage(payload.new);
         }
       )
       .subscribe();
 
-    // 3. Fungsi Cleanup
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []); // [] = Hanya berjalan sekali saat komponen dimuat
+  }, []);
 
-  // Ikon default
   const getNotificationIcon = () => {
     return <Broadcast className="me-3 text-primary" size={20} />;
   };
@@ -779,12 +711,10 @@ function NotificationPanel() {
       <div className="card-body p-0">
         <ul
           className="list-group list-group-flush"
-          // Hapus style maxHeight agar ukuran pas
         >
-          {/* <-- PERUBAHAN 5: Render satu item, bukan .map() --> */}
           {message ? (
             <li
-              key={message.id} // Gunakan ID dari database
+              key={message.id}
               className="list-group-item list-group-item-action d-flex align-items-center"
             >
               {getNotificationIcon()}

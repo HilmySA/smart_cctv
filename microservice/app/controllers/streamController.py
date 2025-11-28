@@ -17,7 +17,7 @@ from app.services.rtspReader import RTSPReader
 from app.views.templates import index_html
 from app.services.faceRecognition import recognizer
 from app.services.mqttHelper import MQTTHelper
-from app.services.anpr import anpr_recognizer
+# from app.services.anpr import anpr_recognizer
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ DAY_MAP_ID = {
 
 class StreamController:
     def __init__(self):
-        self.RTSP_URL = "rtsp://10.15.221.182:8080/h264.sdp"
+        self.RTSP_URL = "rtsp://10.115.86.180:8080/h264.sdp"
         self.reader = RTSPReader(self.RTSP_URL)
 
         self.last_face_data = []
@@ -291,25 +291,32 @@ class StreamController:
                 self.frame_height, self.frame_width = frame.shape[:2]
                 self.analysis_counter += 1
                 
-                # Jalankan ANPR (Logika ANPR tidak diubah)
-                if self.analysis_counter % 3 == 0:
-                    anpr_results = anpr_recognizer.recognize_plate(frame)
-                    if isinstance(anpr_results, list):
-                        self.last_anpr_data = anpr_results
-                        # ➕ BARU: Kirim log ANPR ke MQTT
-                        plate_labels = [p["label"] for p in anpr_results]
-                        self.send_detection_log_mqtt([], plate_labels)
-                    else:
-                        self.last_anpr_data = [] 
+                # # Jalankan ANPR (Logika ANPR tidak diubah)
+                # if self.analysis_counter % 3 == 0:
+                #     anpr_results = anpr_recognizer.recognize_plate(frame)
+                #     if isinstance(anpr_results, list):
+                #         self.last_anpr_data = anpr_results
+                #         # ➕ BARU: Kirim log ANPR ke MQTT
+                #         plate_labels = [p["label"] for p in anpr_results]
+                #         self.send_detection_log_mqtt([], plate_labels)
+                #     else:
+                #         self.last_anpr_data = [] 
                 
-                # Jalankan FR
+                # # Jalankan FR
+                # else:
+                #     face_results = recognizer.verify_face(frame)
+                #     if isinstance(face_results, list):
+                #         self.last_face_data = face_results
+                #         self.handle_face_detection(face_results) 
+                #     else:
+                #         self.last_face_data = [] 
+
+                face_results = recognizer.verify_face(frame)
+                if isinstance(face_results, list):
+                    self.last_face_data = face_results
+                    self.handle_face_detection(face_results) 
                 else:
-                    face_results = recognizer.verify_face(frame)
-                    if isinstance(face_results, list):
-                        self.last_face_data = face_results
-                        self.handle_face_detection(face_results) 
-                    else:
-                        self.last_face_data = [] 
+                    self.last_face_data = [] 
                 
                 if self.analysis_counter > 1000:
                     self.analysis_counter = 0
