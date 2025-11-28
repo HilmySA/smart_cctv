@@ -1,23 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-
-import {
-  CameraVideo,
-  Bell,
-  PersonPlus,
-  ClockHistory,
-  Person,
-  Briefcase,
-  ShieldCheck,
-  CarFront,
-  Save,
-  Broadcast,
-  ExclamationTriangle,
-  PersonCheck,
-  People,
-  Trash,
-  CloudUpload,
-} from "react-bootstrap-icons";
-
+import { CameraVideo, Bell, PersonPlus, ClockHistory, Person, Briefcase, ShieldCheck, CarFront, Save, Broadcast, ExclamationTriangle, PersonCheck, People, Trash, CloudUpload } from "react-bootstrap-icons";
 import { supabase } from "../api/supabaseClient";
 
 const API_BASE_URL = "http://localhost:8080/api";
@@ -26,7 +8,6 @@ export default function Dashboard() {
 
   const [employees, setEmployees] = useState([]);
   const [schedule, setSchedule] = useState(null);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
